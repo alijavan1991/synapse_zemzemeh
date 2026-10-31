@@ -10,6 +10,7 @@ from synapse.api.errors import Codes, NotFoundError
 from synapse.logging.context import LoggingContext
 from synapse.module_api import NOT_SPAM
 from synapse.util.clock import Clock
+from synapse.util.frozenutils import freeze
 from twisted.internet import defer, task
 
 from synapse_zemzemeh import ZemzemehModule
@@ -101,7 +102,8 @@ class FakeApi:
 
 
 def event(event_type="m.room.message", content=None, sender="@alice:example", room_id=ROOM):
-    return SimpleNamespace(type=event_type, content=content or {}, sender=sender, room_id=room_id)
+    # As Synapse hands them over: immutable mappings and tuples, which are not dict or list.
+    return SimpleNamespace(type=event_type, content=freeze(content or {}), sender=sender, room_id=room_id)
 
 
 def reference(**extra):
@@ -176,14 +178,19 @@ class Media(ModuleCase):
     def test_a_member_event_may_not_hide_media_elsewhere(self):
         self.assertEqual(self.check("m.room.member", {"membership": "join", "file": "x"}), REFUSED)
 
-    def media_verdict(self, data):
+    def media_verdict(self, data, thumbnail=None):
         wrapper = SimpleNamespace(write_chunks_to=None)
 
         async def write(callback):
             callback(data[:5])
             callback(data[5:])
         wrapper.write_chunks_to = write
-        return self.run_now(self.module.check_media_file_for_spam(wrapper, SimpleNamespace()))
+        return self.run_now(self.module.check_media_file_for_spam(wrapper, SimpleNamespace(thumbnail=thumbnail)))
+
+    def test_synapses_own_thumbnails_may_be_stored(self):
+        # It makes them from a stored image, as JPEG or PNG; a client cannot upload one.
+        thumbnail = SimpleNamespace(width=32, height=32, method="crop", type="image/jpeg", length=1)
+        self.assertEqual(self.media_verdict(b"\xff\xd8\xff" + b"x" * 20, thumbnail=thumbnail), NOT_SPAM)
 
     def test_only_webp_files_may_be_stored(self):
         body = b"WEBPVP8 " + b"\0" * 20

@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -57,23 +58,23 @@ def _media_in(value: Any) -> bool:
     stack = [value]
     while stack:
         item = stack.pop()
-        if isinstance(item, dict):
+        if isinstance(item, Mapping):
             for key, child in item.items():
                 if key in MEDIA_KEYS:
                     return True
                 if key not in TEXT_KEYS:
                     stack.append(child)
-        elif isinstance(item, list):
+        elif isinstance(item, (list, tuple)):
             stack.extend(item)
         elif isinstance(item, str) and MXC.match(item):
             return True
     return False
 
 
-def _contents(content: dict) -> list[dict]:
+def _contents(content: Mapping) -> list[Mapping]:
     """The content, and what an edit would replace it with."""
     new = content.get("m.new_content")
-    return [content, new] if isinstance(new, dict) else [content]
+    return [content, new] if isinstance(new, Mapping) else [content]
 
 
 def _is_webp(data: bytes) -> bool:
@@ -145,7 +146,8 @@ class ZemzemehModule:
     # --- Events and rooms ---
 
     async def check_event_for_spam(self, event) -> Any:
-        content = event.content if isinstance(event.content, dict) else {}
+        # Mapping, not dict: Synapse may hand over its immutable mappings.
+        content = event.content
         if event.type == "m.room.join_rules":
             return NOT_SPAM if content.get("join_rule") == "invite" else REFUSED
         # Encrypted content cannot be read here. Without the bytes path there is nothing for it to point at.
@@ -167,7 +169,7 @@ class ZemzemehModule:
                 return REFUSED
         return NOT_SPAM
 
-    async def _send_allowed(self, event, reference: dict) -> bool:
+    async def _send_allowed(self, event, reference: Mapping) -> bool:
         try:
             subject = await self._subject_of(event.sender)
             if subject is None:
@@ -217,7 +219,10 @@ class ZemzemehModule:
         return NOT_SPAM
 
     async def check_media_file_for_spam(self, file_wrapper, file_info) -> Any:
-        """Behind the gateway every upload is already WebP; anything else got here some other way."""
+        """Behind the gateway every upload is already WebP; anything else got here some other way.
+        This also runs on the thumbnails Synapse makes itself, which no client can supply."""
+        if file_info.thumbnail is not None:
+            return NOT_SPAM
         chunks: list[bytes] = []
         await file_wrapper.write_chunks_to(chunks.append)
         return NOT_SPAM if _is_webp(b"".join(chunks)) else REFUSED
