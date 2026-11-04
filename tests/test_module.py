@@ -39,9 +39,11 @@ class FakeHttp:
         self.token_replies = 0
         self.jwks_fetches = 0
         self.posts = []
+        self.gets = []
         self.fail_keycloak = False
 
     async def get_json(self, uri, *args, **kwargs):
+        self.gets.append(uri)
         if self.fail_keycloak:
             raise OSError("keycloak down")
         if uri.endswith("/.well-known/openid-configuration"):
@@ -226,6 +228,14 @@ class FileReferences(ModuleCase):
         self.http.validate = "hang"
         coroutine = self.module.check_event_for_spam(event(content=reference()))
         self.assertEqual(self.run_now(coroutine, advance=self.module.config.timeout_seconds + 1), REFUSED)
+
+    def test_metadata_comes_from_the_issuer_unless_told_otherwise(self):
+        self.run_now(self.module._oidc_metadata())
+        self.assertEqual(self.http.gets, [f"{ISSUER}/.well-known/openid-configuration"])
+        private = "http://keycloak:8080/realms/z/.well-known/openid-configuration"
+        module = ZemzemehModule(ZemzemehModule.parse_config(config(metadata_url=private)), self.api)
+        self.run_now(module._oidc_metadata())
+        self.assertEqual(self.http.gets[-1], private)
 
     def test_keycloak_down_fails_closed(self):
         self.http.fail_keycloak = True

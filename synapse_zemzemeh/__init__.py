@@ -51,6 +51,8 @@ class Config:
     token_max_lifetime_seconds: int
     jwks_refresh_seconds: int
     timeout_seconds: float
+    # Where the module reads the provider's metadata, e.g. its private address. Blank: the issuer's.
+    metadata_url: str = ""
 
 
 def _media_in(value: Any) -> bool:
@@ -130,6 +132,7 @@ class ZemzemehModule:
             token_max_lifetime_seconds=int(config.get("token_max_lifetime_seconds", 300)),
             jwks_refresh_seconds=int(config.get("jwks_refresh_seconds", 30)),
             timeout_seconds=float(config.get("timeout_seconds", 3)),
+            metadata_url=config.get("metadata_url", ""),
         )
 
     async def _timed(self, call, *args, **kwargs) -> Any:
@@ -140,7 +143,8 @@ class ZemzemehModule:
     async def _oidc_metadata(self) -> dict:
         if self._metadata is None:
             self._metadata = await self._timed(
-                self.api.http_client.get_json, f"{self.config.issuer}/.well-known/openid-configuration")
+                self.api.http_client.get_json,
+                self.config.metadata_url or f"{self.config.issuer}/.well-known/openid-configuration")
         return self._metadata
 
     # --- Events and rooms ---

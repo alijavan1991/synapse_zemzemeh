@@ -28,6 +28,7 @@ modules:
       membership_scope: zemzemeh.membership
       membership_audience: synapse-dlp
       # Optional: token_max_lifetime_seconds 300, jwks_refresh_seconds 30, timeout_seconds 3
+      # Optional: metadata_url, to read the provider's metadata at a private address instead of the issuer's
 ```
 
 Set `max_upload_size` to the gateway's output limit.
